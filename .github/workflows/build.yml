@@ -32,6 +32,8 @@ env:
   UPSTREAM_REPO: https://github.com/noctalia-dev/noctalia.git
   UPSTREAM_BRANCH: main
   RELEASE_TAG: noctalia-git-bin
+  CCACHE_DIR: /var/cache/ccache
+  CCACHE_MAXSIZE: 2G
 
 jobs:
   build-and-publish:
@@ -44,8 +46,26 @@ jobs:
       - name: Checkout builder repository
         uses: actions/checkout@v4
 
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/ccache
+          key: ccache-${{ env.PKG_NAME }}-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: |
+            ccache-${{ env.PKG_NAME }}-
+
+      - name: Restore pacman package cache
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/pacman/pkg
+          key: pacman-${{ env.PKG_NAME }}-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: |
+            pacman-${{ env.PKG_NAME }}-
+
       - name: Install tools
-        run: pacman -Syu --noconfirm git github-cli
+        run: |
+          mkdir -p /var/cache/ccache /var/cache/pacman/pkg
+          pacman -Syu --noconfirm git github-cli
 
       - name: Build upstream binary and publish GitHub Release
         id: upstream
@@ -54,6 +74,8 @@ jobs:
           FORCE_BUILD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_build }}
         run: |
           set -euo pipefail
+
+          export GH_REPO="${GITHUB_REPOSITORY}"
 
           workdir=/tmp/noctalia-build
           staging=/tmp/noctalia-staging
@@ -73,7 +95,7 @@ jobs:
           echo "asset_url=${asset_url}" >> "${GITHUB_OUTPUT}"
 
           if [ "${FORCE_BUILD}" != "true" ]; then
-            if gh release view "${{ env.RELEASE_TAG }}" --json assets \
+            if gh release view "${{ env.RELEASE_TAG }}" -R "${GITHUB_REPOSITORY}" --json assets \
               --jq '.assets[].name' 2>/dev/null | grep -Fxq "${tarball}"; then
               echo "Release asset ${tarball} already exists, skipping compile"
               echo "skipped_build=true" >> "${GITHUB_OUTPUT}"
@@ -84,11 +106,18 @@ jobs:
           echo "skipped_build=false" >> "${GITHUB_OUTPUT}"
 
           pacman -Syu --noconfirm \
-            cairo curl fontconfig freetype2 glib2 jemalloc libglvnd \
+            ccache cairo curl fontconfig freetype2 glib2 jemalloc libglvnd \
             libpipewire libqalculate librsvg libwebp libwireplumber \
             libxkbcommon libxml2 md4c meson ninja nlohmann-json pam polkit \
             pango pkgconf sdbus-cpp tomlplusplus wayland wayland-protocols
 
+          ccache --set-config=max_size="${CCACHE_MAXSIZE}"
+          ccache --set-config=compression=true
+          ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime,include_file_ctime
+          ccache --zero-stats
+
+          export CC="ccache gcc"
+          export CXX="ccache g++"
           CXXFLAGS+=" -Wno-unused-result"
           arch-meson . build-release \
             -Db_ndebug=true \
@@ -97,19 +126,20 @@ jobs:
             -Dsystem_tomlplusplus=true \
             -Dsystem_nlohmann_json=true
           meson compile -C build-release
+          ccache --show-stats
           DESTDIR="${staging}" meson install -C build-release
 
           install -Dm644 LICENSE "${staging}/usr/share/licenses/noctalia-git-bin/LICENSE"
 
           tar -C "${staging}" --zstd -cf "/tmp/${tarball}" usr
 
-          if ! gh release view "${{ env.RELEASE_TAG }}" >/dev/null 2>&1; then
-            gh release create "${{ env.RELEASE_TAG }}" \
+          if ! gh release view "${{ env.RELEASE_TAG }}" -R "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${{ env.RELEASE_TAG }}" -R "${GITHUB_REPOSITORY}" \
               --title "noctalia-git-bin rolling builds" \
               --notes "Binaires precompiles du dernier commit [noctalia-dev/noctalia](${{ env.UPSTREAM_REPO }})."
           fi
 
-          gh release upload "${{ env.RELEASE_TAG }}" "/tmp/${tarball}" --clobber
+          gh release upload "${{ env.RELEASE_TAG }}" -R "${GITHUB_REPOSITORY}" "/tmp/${tarball}" --clobber
 
       - name: Build Arch package from release
         id: build

@@ -36,7 +36,7 @@ depends=(
 )
 provides=('noctalia' 'noctalia-git')
 conflicts=('noctalia' 'noctalia-bin' 'noctalia-git')
-_github_repo='Cleboost/my-arch-repo-builder'
+_github_repo='Cleboost/My-Arch-Repo-Builder'
 _release_tag='noctalia-git-bin'
 source=("noctalia-${pkgver}-x86_64.tar.zst::https://github.com/${_github_repo}/releases/download/${_release_tag}/noctalia-${pkgver}-x86_64.tar.zst")
 sha256sums=('SKIP')
