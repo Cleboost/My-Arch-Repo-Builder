@@ -1,0 +1,46 @@
+# Maintainer: Cleboost <https://github.com/Cleboost>
+# Binaire compile en CI, publie sur GitHub Releases, PKGBUILD ne fait que repackager.
+
+pkgname=noctalia-git-bin
+pkgver=5.0.0.r0.g000000000
+pkgrel=1
+pkgdesc='Lightweight Wayland shell - latest git, prebuilt binary'
+arch=('x86_64')
+url='https://github.com/noctalia-dev/noctalia'
+license=('MIT')
+options=('!strip' '!debug')
+depends=(
+  'cairo'
+  'curl'
+  'fontconfig'
+  'freetype2'
+  'gcc-libs'
+  'glib2'
+  'glibc'
+  'jemalloc'
+  'libglvnd'
+  'libpipewire'
+  'libqalculate'
+  'librsvg'
+  'libwebp'
+  'libwireplumber'
+  'libxkbcommon'
+  'libxml2'
+  'md4c'
+  'pam'
+  'polkit'
+  'pango'
+  'sdbus-cpp'
+  'tomlplusplus'
+  'wayland'
+)
+provides=('noctalia' 'noctalia-git')
+conflicts=('noctalia' 'noctalia-bin' 'noctalia-git')
+_github_repo='Cleboost/my-arch-repo-builder'
+_release_tag='noctalia-git-bin'
+source=("noctalia-${pkgver}-x86_64.tar.zst::https://github.com/${_github_repo}/releases/download/${_release_tag}/noctalia-${pkgver}-x86_64.tar.zst")
+sha256sums=('SKIP')
+
+package() {
+  tar --zstd -xf "${srcdir}/noctalia-${pkgver}-x86_64.tar.zst" -C "${pkgdir}"
+}
